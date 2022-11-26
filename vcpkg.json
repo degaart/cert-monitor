@@ -1,0 +1,11 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+    "name": "cert-monitor",
+    "version": "0.1",
+    "builtin-baseline": "b6bde16b1ea075f834724f963405af7e7d7e04a8",
+    "dependencies": [
+        "fmt",
+        "openssl"
+    ]
+}
+
