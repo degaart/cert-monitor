@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <optional>
+#include <crow.h>
+#include <BS_thread_pool.hpp>
 
 namespace ssl {
 
@@ -375,17 +377,19 @@ namespace net {
 
 }
 
-int main(int argc, char** argv)
-{
-    if(argc != 2) {
-        fmt::fprintf(stderr, "Usage: %s <hostname>\n", argv[0]);
-        return 1;
-    }
+struct HostInfo {
+    std::string name;
+    std::string not_before;
+    bool is_invalid;
+    std::string not_after;
+    bool is_expired;
+};
 
-    auto addresses = net::lookup_host(argv[1]);
+HostInfo get_host_info(const std::string& hostname)
+{
+    auto addresses = net::lookup_host(hostname);
     if(addresses.empty()) {
-        fmt::fprintf(stderr, "Host not found: %s\n", argv[1]);
-        return 1;
+        throw std::runtime_error("Host not found");
     }
 
     net::Socket sock;
@@ -402,8 +406,7 @@ int main(int argc, char** argv)
     }
 
     if(!connected) {
-        fmt::fprintf(stderr, "%s\n", *last_error);
-        return 1;
+        throw std::runtime_error(*last_error);
     }
 
     ssl::Ctx ctx;
@@ -413,23 +416,56 @@ int main(int argc, char** argv)
 
     ssl::Cert cert = ssl.get_peer_certificate();
 
-    ssl::Time now;
-    bool has_err = false;
-    ssl::Time not_before = cert.get_not_before();
+    HostInfo result;
+    result.name = hostname;
 
-    fmt::printf("Not before: %s\n", not_before.print());
-    if(not_before > now) {
-        fmt::fprintf(stderr, "Certificate date invalid\n");
-        has_err = true;
-    }
+    ssl::Time now;
+    ssl::Time not_before = cert.get_not_before();
+    result.not_before = not_before.print();
+    result.is_invalid = not_before > now;
 
     ssl::Time not_after = cert.get_not_after();
-    fmt::printf("Not after: %s\n", not_after.print());
-    if(not_after < now) {
-        fmt::fprintf(stderr, "Certificate expired\n");
-        has_err = true;
-    }
+    result.not_after = not_after.print();
+    result.is_expired = not_after < now;
 
-    return has_err ? 1 : 0;
+    return result;
+}
+
+int main(int argc, char** argv)
+{
+    BS::thread_pool pool;
+    std::vector<std::string> hosts = { "www.anbg-ga.com", "www.capdatasoft.com", "expired.badssl.com" };
+
+    crow::SimpleApp app;
+    CROW_ROUTE(app, "/")([&hosts, &pool]() {
+        std::vector<std::tuple<std::string,std::future<HostInfo>>> host_infos;
+        for(const auto& host: hosts) {
+            host_infos.push_back(std::make_tuple(host, pool.submit(get_host_info, host)));
+        }
+
+        std::vector<crow::json::wvalue> jhosts;
+        for(auto& info: host_infos) {
+            crow::json::wvalue jhost;
+            jhost["name"] = std::get<0>(info);
+            try {
+                HostInfo host_info = std::get<1>(info).get();
+                jhost["not_before"] = host_info.not_before;
+                jhost["not_after"] = host_info.not_after;
+                jhost["is_invalid"] = host_info.is_invalid;
+                jhost["is_expired"] = host_info.is_expired;
+            } catch(const std::exception& ex) {
+                jhost["error"] = ex.what();
+            }
+            jhosts.push_back(jhost);
+        }
+
+        crow::mustache::context ctx;
+        ctx["hosts"] = std::move(jhosts);
+
+        auto index_page = crow::mustache::load("index.html");
+        return index_page.render(ctx);
+    });
+    app.port(8080).multithreaded().run();
+    return 0;
 }
 

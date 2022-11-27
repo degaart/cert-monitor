@@ -5,7 +5,9 @@
     "builtin-baseline": "b6bde16b1ea075f834724f963405af7e7d7e04a8",
     "dependencies": [
         "fmt",
-        "openssl"
+        "openssl",
+        "crow",
+        "bshoshany-thread-pool"
     ]
 }
 

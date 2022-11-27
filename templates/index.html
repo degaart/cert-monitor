@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>cert-monitor</title>
+	</head>
+	<body>
+        <h1>cert-monitor</h1>	
+        <table>
+            <thead>
+                <tr>
+                    <th>Hostname</th>
+                    <th>Not before</th>
+                    <th>Not after</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{#hosts}}
+                    <tr>
+                        <td>{{name}}</td>
+                        <td>{{not_before}}</td>
+                        <td>{{not_after}}</td>
+                    </tr>
+                {{/hosts}}
+            </tbody>
+        </table>
+	</body>
+</html>
+
