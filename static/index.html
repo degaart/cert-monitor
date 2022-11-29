@@ -5,6 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1">
 		<title>cert-monitor</title>
         <script src="js/index.js"></script>
+        <link rel="stylesheet" href="css/index.css">
 	</head>
 	<body>
         <h1>cert-monitor</h1>	
@@ -16,14 +17,7 @@
                     <th>Not after</th>
                 </tr>
             </thead>
-            <tbody>
-                {{#hosts}}
-                    <tr>
-                        <td>{{name}}</td>
-                        <td>{{not_before}}</td>
-                        <td>{{not_after}}</td>
-                    </tr>
-                {{/hosts}}
+            <tbody id="table-data">
             </tbody>
         </table>
 	</body>

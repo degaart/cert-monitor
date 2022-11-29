@@ -6,8 +6,8 @@
     "dependencies": [
         "fmt",
         "openssl",
-        "crow",
-        "bshoshany-thread-pool"
+        "bshoshany-thread-pool",
+        "drogon"
     ]
 }
 

@@ -1,8 +1,7 @@
 find_package(fmt CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(Crow CONFIG REQUIRED)
 find_path(BSHOSHANY_THREAD_POOL_INCLUDE_DIRS "BS_thread_pool.hpp")
-
+find_package(Drogon CONFIG REQUIRED)
 
 set(SRCS
     main.cpp
@@ -13,8 +12,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         fmt::fmt
         OpenSSL::SSL OpenSSL::Crypto
-    INTERFACE
-        Crow::Crow
+        Drogon::Drogon
 )
 target_include_directories(${PROJECT_NAME}
     PRIVATE

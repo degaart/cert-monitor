@@ -8,9 +8,9 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <optional>
-#include <crow.h>
 #include <BS_thread_pool.hpp>
 #include <filesystem>
+#include <drogon/HttpAppFramework.h>
 
 namespace ssl {
 
@@ -442,57 +442,29 @@ int main(int argc, char** argv)
 {
     BS::thread_pool pool;
 
-    crow::SimpleApp app;
-    CROW_ROUTE(app, "/api/v1/host/<string>")([](std::string hostname) {
-        crow::json::wvalue result;
-        result["name"] = hostname;
-        try {
-            HostInfo info = get_host_info(hostname);
-            result["not_before"] = info.not_before;
-            result["not_after"] = info.not_after;
-            result["is_invalid"] = info.is_invalid;
-            result["is_expired"] = info.is_expired;
-        } catch(const std::exception& ex) {
-            result["error"] = ex.what();
-        }
-        return result;
-    });
+    drogon::app()
+        .addListener("0.0.0.0",8080)
+        .setDocumentRoot("static")
+        .registerHandler("/api/v1/host/{1}",
+                [&pool](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback, const std::string& hostname) {
+                    Json::Value result;
+                    result["name"] = hostname;
+                    try {
+                        HostInfo info = get_host_info(hostname);
+                        result["not_before"] = info.not_before;
+                        result["not_after"] = info.not_after;
+                        result["is_invalid"] = info.is_invalid;
+                        result["is_expired"] = info.is_expired;
+                    } catch(const std::exception& ex) {
+                        result["error"] = ex.what();
+                    }
 
-    CROW_CATCHALL_ROUTE(app)([](const crow::request& req){
-        CROW_LOG_INFO << "*** URL ***" << req.url;
-        std::string path = req.url;
-        while(path.size() > 1 && path.back() == '/')
-            path.pop_back();
-        while(path.size() > 1 && path.front() == '/')
-            path.erase(0, 1);
-        path = fmt::sprintf("www/%s", path);
-        while(path.size() > 1 && path.back() == '/')
-            path.pop_back();
-        while(path.size() > 1 && path.front() == '/')
-            path.erase(0, 1);
-
-        auto status = std::filesystem::status(path);
-        if(std::filesystem::is_directory(status))
-            path = fmt::sprintf("%s/index.html", path);
-
-        CROW_LOG_INFO << "Path: " << path;
-
-        status = std::filesystem::status(path);
-        crow::response response;
-        if(std::filesystem::is_regular_file(status)) {
-            CROW_LOG_INFO << path << ": Is a regular file";
-            response.set_static_file_info(path);
-            if(ends_with(path, ".js"))
-                response.set_header("Content-Type", "application/javascript");
-        } else {
-            CROW_LOG_INFO << path << ": Nat found";
-            response.code = 404;
-            response.body = "404 Bâchée Not Found\n";
-        }
-        return response;
-    });
-
-    app.port(8080).multithreaded().run();
-    return 0;
+                    auto resp = drogon::HttpResponse::newHttpJsonResponse(result);
+                    callback(resp);
+                    return result;
+                },
+                {drogon::Get})
+        .run();
+    eturn 0;
 }
 
