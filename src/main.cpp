@@ -10,6 +10,7 @@
 #include <optional>
 #include <crow.h>
 #include <BS_thread_pool.hpp>
+#include <filesystem>
 
 namespace ssl {
 
@@ -431,40 +432,66 @@ HostInfo get_host_info(const std::string& hostname)
     return result;
 }
 
+bool ends_with(std::string_view haystack, std::string_view needle)
+{
+    return haystack.size() >= needle.size() &&
+        haystack.substr(haystack.size() - needle.size()) == needle;
+}
+
 int main(int argc, char** argv)
 {
     BS::thread_pool pool;
-    std::vector<std::string> hosts = { "www.anbg-ga.com", "www.capdatasoft.com", "expired.badssl.com" };
 
     crow::SimpleApp app;
-    CROW_ROUTE(app, "/")([&hosts, &pool]() {
-        std::vector<std::tuple<std::string,std::future<HostInfo>>> host_infos;
-        for(const auto& host: hosts) {
-            host_infos.push_back(std::make_tuple(host, pool.submit(get_host_info, host)));
+    CROW_ROUTE(app, "/api/v1/host/<string>")([](std::string hostname) {
+        crow::json::wvalue result;
+        result["name"] = hostname;
+        try {
+            HostInfo info = get_host_info(hostname);
+            result["not_before"] = info.not_before;
+            result["not_after"] = info.not_after;
+            result["is_invalid"] = info.is_invalid;
+            result["is_expired"] = info.is_expired;
+        } catch(const std::exception& ex) {
+            result["error"] = ex.what();
         }
-
-        std::vector<crow::json::wvalue> jhosts;
-        for(auto& info: host_infos) {
-            crow::json::wvalue jhost;
-            jhost["name"] = std::get<0>(info);
-            try {
-                HostInfo host_info = std::get<1>(info).get();
-                jhost["not_before"] = host_info.not_before;
-                jhost["not_after"] = host_info.not_after;
-                jhost["is_invalid"] = host_info.is_invalid;
-                jhost["is_expired"] = host_info.is_expired;
-            } catch(const std::exception& ex) {
-                jhost["error"] = ex.what();
-            }
-            jhosts.push_back(jhost);
-        }
-
-        crow::mustache::context ctx;
-        ctx["hosts"] = std::move(jhosts);
-
-        auto index_page = crow::mustache::load("index.html");
-        return index_page.render(ctx);
+        return result;
     });
+
+    CROW_CATCHALL_ROUTE(app)([](const crow::request& req){
+        CROW_LOG_INFO << "*** URL ***" << req.url;
+        std::string path = req.url;
+        while(path.size() > 1 && path.back() == '/')
+            path.pop_back();
+        while(path.size() > 1 && path.front() == '/')
+            path.erase(0, 1);
+        path = fmt::sprintf("www/%s", path);
+        while(path.size() > 1 && path.back() == '/')
+            path.pop_back();
+        while(path.size() > 1 && path.front() == '/')
+            path.erase(0, 1);
+
+        auto status = std::filesystem::status(path);
+        if(std::filesystem::is_directory(status))
+            path = fmt::sprintf("%s/index.html", path);
+
+        CROW_LOG_INFO << "Path: " << path;
+
+        status = std::filesystem::status(path);
+        crow::response response;
+        if(std::filesystem::is_regular_file(status)) {
+            CROW_LOG_INFO << path << ": Is a regular file";
+            response.set_static_file_info(path);
+            if(ends_with(path, ".js"))
+                response.set_header("Content-Type", "application/javascript");
+        } else {
+            CROW_LOG_INFO << path << ": Nat found";
+            response.code = 404;
+            response.body = "404 Bâchée Not Found\n";
+        }
+        return response;
+    });
+
     app.port(8080).multithreaded().run();
     return 0;
 }
