@@ -1,3 +1,21 @@
+body {
+    font-family: Sans-serif;
+}
+
+table, th, td {
+    border: 1px solid;
+}
+
+th, td {
+    padding: 15px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+
+}
+
 .invalid {
     color: red;
 }

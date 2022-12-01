@@ -443,7 +443,7 @@ int main(int argc, char** argv)
     BS::thread_pool pool;
 
     drogon::app()
-        .addListener("0.0.0.0",8080)
+        .addListener("0.0.0.0", 8080)
         .setDocumentRoot("static")
         .registerHandler("/api/v1/host/{1}",
                 [&pool](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback, const std::string& hostname) {
@@ -465,6 +465,6 @@ int main(int argc, char** argv)
                 },
                 {drogon::Get})
         .run();
-    eturn 0;
+    return 0;
 }
 

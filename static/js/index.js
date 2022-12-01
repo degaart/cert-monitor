@@ -1,12 +1,5 @@
 "use strict";
 
-const hosts = [
-    "www.google.com",
-    "wrong.host.badssl.com",
-    "expired.badssl.com",
-    "letsencrypt.org"
-];
-
 let elementMap = {};
 //let fetchingHost = 0;
 
