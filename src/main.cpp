@@ -10,7 +10,10 @@
 #include <optional>
 #include <BS_thread_pool.hpp>
 #include <filesystem>
-#include <drogon/HttpAppFramework.h>
+#include <restinio/all.hpp>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 namespace ssl {
 
@@ -438,33 +441,94 @@ bool ends_with(std::string_view haystack, std::string_view needle)
         haystack.substr(haystack.size() - needle.size()) == needle;
 }
 
+std::optional<std::string> get_mimetype(const std::filesystem::path& filename)
+{
+    static const std::map<std::string,std::string> mimetypes = {
+        { ".js", "text/javascript" },
+        { ".html", "text/html" },
+        { ".htm", "text/html" },
+        { ".ico", "image/vnd.microsoft.icon" },
+        { ".css", "text/css" },
+    };
+
+    auto it = mimetypes.find(filename.extension().string());
+    if(it != mimetypes.end())
+        return it->second;
+    else
+        return std::nullopt;
+}
+
 int main(int argc, char** argv)
 {
     BS::thread_pool pool;
 
-    drogon::app()
-        .addListener("0.0.0.0", 8080)
-        .setDocumentRoot("static")
-        .registerHandler("/api/v1/host/{1}",
-                [&pool](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback, const std::string& hostname) {
-                    Json::Value result;
-                    result["name"] = hostname;
-                    try {
-                        HostInfo info = get_host_info(hostname);
-                        result["not_before"] = info.not_before;
-                        result["not_after"] = info.not_after;
-                        result["is_invalid"] = info.is_invalid;
-                        result["is_expired"] = info.is_expired;
-                    } catch(const std::exception& ex) {
-                        result["error"] = ex.what();
-                    }
+    auto router = std::make_unique<restinio::router::express_router_t<>>();
+    router->http_get("/api/v1/host/:hostname",
+            [](auto req, auto params) {
+                std::string hostname(params["hostname"]);
+                auto result = json::object();
+                result["name"] = hostname;
+                try {
+                    HostInfo info = get_host_info(hostname);
+                    result["not_before"] = info.not_before;
+                    result["not_after"] = info.not_after;
+                    result["is_invalid"] = info.is_invalid;
+                    result["is_expired"] = info.is_expired;
+                } catch(const std::exception& ex) {
+                    result["error"] = ex.what();
+                }
 
-                    auto resp = drogon::HttpResponse::newHttpJsonResponse(result);
-                    callback(resp);
-                    return result;
-                },
-                {drogon::Get})
-        .run();
+                return req->create_response()
+                    .set_body(result.dump())
+                    .append_header(restinio::http_field::content_type, "application/json")
+                    .done();
+            });
+    router->non_matched_request_handler(
+            [](auto req) {
+                std::string r_path(req->header().path());
+                while(!r_path.empty() && r_path.front() == '/')
+                    r_path = r_path.substr(1);
+                while(!r_path.empty() && r_path.back() == '/')
+                    r_path.pop_back();
+
+                std::filesystem::path path = "static";
+                path.append(r_path);
+                auto status = std::filesystem::status(path);
+                if(std::filesystem::is_directory(status))
+                    path.append("index.html");
+                status = std::filesystem::status(path);
+
+                fmt::fprintf(stderr, "path: %s\n", path.string());
+                if(std::filesystem::is_regular_file(status) || std::filesystem::is_symlink(status)) {
+                    auto response = req->create_response(restinio::status_ok())
+                        .set_body(restinio::sendfile(path.string()))
+                        .connection_close();
+
+                    auto mimetype = get_mimetype(path);
+                    if(mimetype)
+                        response.append_header(restinio::http_field::content_type, *mimetype);
+                        
+                    return response.done();
+                } else {
+                    return req->create_response(restinio::status_not_found())
+                        .set_body(
+                                fmt::sprintf("404 Bâchée not found\nUrl: %s\n", r_path)
+                        )
+                        .append_header(restinio::http_field::content_type, "text/plain; charset=utf-8")
+                        .connection_close()
+                        .done();
+                }
+            });
+
+    struct server_traits : public restinio::default_single_thread_traits_t {
+        using request_handler_t = restinio::router::express_router_t<>;
+    };
+
+    restinio::run(
+            restinio::on_this_thread<server_traits>()
+                .port(8080)
+                .address("localhost")
+                .request_handler(std::move(router)));
     return 0;
 }
 
